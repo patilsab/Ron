@@ -53,6 +53,10 @@ PACMAN_PKGS=(
     git
     ttf-roboto
     curl
+    sddm
+    qt5-quickcontrols2
+    qt5-graphicaleffects
+    qt5-svg
 )
 
 # AUR packages (need yay/paru). We only attempt these if an AUR helper exists.
@@ -165,7 +169,85 @@ if [[ "$SHELL" != *zsh ]]; then
     chsh -s "$(command -v zsh)" || warn "Could not chsh automatically — run 'chsh -s \$(which zsh)' yourself."
 fi
 
-# --- 6. Point out what needs manual attention -------------------------------
+# --- 6. Set up a nicer login screen (SDDM + Sugar Candy theme) --------------
+
+info "Setting up SDDM as your display manager with the Sugar Candy theme..."
+
+if [[ -n "$AUR_HELPER" ]]; then
+    "$AUR_HELPER" -S --needed --noconfirm sddm-theme-sugar-candy-git || \
+        warn "Sugar Candy theme install failed — SDDM will use its default theme."
+else
+    warn "No AUR helper found, can't install sddm-theme-sugar-candy automatically."
+    warn "Install yay/paru, then run: yay -S sddm-theme-sugar-candy-git"
+fi
+
+SDDM_THEME_DIR="/usr/share/sddm/themes/sugar-candy"
+if [[ -d "$SDDM_THEME_DIR" ]]; then
+    sudo mkdir -p /etc/sddm.conf.d
+    sudo tee /etc/sddm.conf.d/theme.conf >/dev/null <<EOF
+[Theme]
+Current=sugar-candy
+EOF
+    # Point the theme at the same wallpaper used in i3, if we copied one
+    if [[ -f "${HOME}/Pictures/arch-clown-wallpaper.jpg" ]]; then
+        sudo mkdir -p "${SDDM_THEME_DIR}/backgrounds"
+        sudo cp "${HOME}/Pictures/arch-clown-wallpaper.jpg" "${SDDM_THEME_DIR}/backgrounds/wallpaper.jpg"
+        if [[ -f "${SDDM_THEME_DIR}/theme.conf.user" ]]; then
+            sudo sed -i 's|^Background=.*|Background="backgrounds/wallpaper.jpg"|' \
+                "${SDDM_THEME_DIR}/theme.conf.user" 2>/dev/null || true
+        fi
+    fi
+    info "SDDM theme configured."
+else
+    warn "Sugar Candy theme directory not found — skipping theme.conf setup."
+fi
+
+# Disable any other display manager and enable sddm
+for dm in gdm lightdm lxdm; do
+    if systemctl is-enabled "${dm}.service" >/dev/null 2>&1; then
+        info "Disabling ${dm} in favor of sddm..."
+        sudo systemctl disable "${dm}.service"
+    fi
+done
+sudo systemctl enable sddm.service
+
+# Make sure i3 shows up as a session option for SDDM
+if [[ ! -f /usr/share/xsessions/i3.desktop ]]; then
+    warn "No /usr/share/xsessions/i3.desktop found — reinstall i3-wm if i3"
+    warn "doesn't appear as a login option."
+fi
+
+# --- 7. Apply changes live if we're already in a running i3 session --------
+
+if [[ -n "${I3SOCK:-}" ]] || pgrep -x i3 >/dev/null 2>&1; then
+    info "Detected a running i3 session — reloading it now..."
+    i3-msg reload  >/dev/null 2>&1 || true
+    i3-msg restart >/dev/null 2>&1 || true
+
+    # Look for the repo's polybar launch script and (re)start it
+    POLYBAR_LAUNCH=""
+    for candidate in "${HOME}/.config/polybar/launch.sh" "${HOME}/.config/polybar/launch_polybar.sh"; do
+        if [[ -x "$candidate" ]]; then
+            POLYBAR_LAUNCH="$candidate"
+            break
+        fi
+    done
+    if [[ -n "$POLYBAR_LAUNCH" ]]; then
+        info "Restarting polybar via ${POLYBAR_LAUNCH}..."
+        killall -q polybar 2>/dev/null || true
+        "$POLYBAR_LAUNCH" >/dev/null 2>&1 &
+        disown
+    else
+        warn "Couldn't find a polybar launch script in ~/.config/polybar/."
+        warn "Check ~/.config/i3/config for how polybar is normally started"
+        warn "(look for an exec_always line) and run that manually, e.g.:"
+        warn "  killall polybar; polybar main &"
+    fi
+else
+    info "No running i3 session detected — changes will apply on next login."
+fi
+
+# --- 8. Point out what needs manual attention -------------------------------
 
 echo
 info "Done. A few things to check before you log out/in to i3:"
@@ -181,5 +263,11 @@ echo
 echo "  3. Your previous configs (if any) were backed up to:"
 echo "       ${BACKUP_DIR}"
 echo
-echo "  4. Log out and select i3 at your display manager (or run 'startx' /"
-echo "     'exec i3' depending on your setup) to see the new environment."
+echo "  4. SDDM is now your display manager with the Sugar Candy theme."
+echo "     Log out (or reboot) to see the new login screen, and pick the"
+echo "     'i3' session from the session picker if it's not already selected."
+echo
+echo "  5. If you were already inside i3, it was reloaded/restarted and"
+echo "     polybar was relaunched automatically — if the bar still looks"
+echo "     off, check ~/.config/i3/config for the exec_always line that"
+echo "     starts polybar and confirm it points at the right script."
