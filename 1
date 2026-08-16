@@ -1,0 +1,1070 @@
+```bash
+#!/usr/bin/env bash
+
+# ============================================================
+# HackTheClown Arch Linux Dotfiles Installer
+# ============================================================
+#
+# Based on:
+# https://github.com/hacktheclown/arch-clown-dotfiles
+#
+# This installer:
+#
+#   - Installs the required Arch packages
+#   - Installs the original HackTheClown dotfiles
+#   - Installs Zsh / Oh My Zsh / Powerlevel10k
+#   - Installs Atuin
+#   - Installs the required Nerd Fonts
+#   - Installs the wallpaper
+#   - Fixes /home/changeme paths
+#   - Removes the hard-coded Rofi 192 DPI
+#   - Assigns Firefox to Workspace 2
+#   - Keeps Terminator as the terminal
+#   - Keeps the original Rofi theme
+#   - Keeps the original Polybar
+#   - Keeps the original i3 configuration
+#   - Disables VMware-specific settings
+#   - Backs up existing configuration
+#   - Validates i3 before finishing
+#
+# ============================================================
+
+set -Eeuo pipefail
+
+# ============================================================
+# VARIABLES
+# ============================================================
+
+REPO="https://github.com/hacktheclown/arch-clown-dotfiles.git"
+
+REPO_DIR="$HOME/arch-clown-dotfiles"
+
+CONFIG_DIR="$HOME/.config"
+
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+
+BACKUP_DIR="$HOME/.config-backup-hacktheclown-${TIMESTAMP}"
+
+# ============================================================
+# COLORS
+# ============================================================
+
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+RESET='\033[0m'
+
+info() {
+    echo -e "${CYAN}[INFO]${RESET} $1"
+}
+
+success() {
+    echo -e "${GREEN}[ OK ]${RESET} $1"
+}
+
+warning() {
+    echo -e "${YELLOW}[WARN]${RESET} $1"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${RESET} $1"
+}
+
+# ============================================================
+# ERROR HANDLER
+# ============================================================
+
+trap 'error "Installation failed at line $LINENO."' ERR
+
+# ============================================================
+# ROOT CHECK
+# ============================================================
+
+if [[ "$EUID" -eq 0 ]]; then
+    error "Do not run this script as root."
+    echo
+    echo "Run it as your normal user."
+    echo
+    exit 1
+fi
+
+# ============================================================
+# ARCH CHECK
+# ============================================================
+
+if ! command -v pacman >/dev/null 2>&1; then
+    error "pacman was not found."
+    error "This installer is for Arch Linux."
+    exit 1
+fi
+
+# ============================================================
+# HEADER
+# ============================================================
+
+clear
+
+echo
+echo "============================================================"
+echo "       HACK THE CLOWN - ARCH LINUX DOTFILES"
+echo "============================================================"
+echo
+echo "Repository:"
+echo
+echo "  $REPO"
+echo
+echo "User:"
+echo
+echo "  $USER"
+echo
+echo "Home:"
+echo
+echo "  $HOME"
+echo
+echo "============================================================"
+echo
+
+read -r -p "Continue? [y/N]: " ANSWER
+
+if [[ ! "$ANSWER" =~ ^[Yy]$ ]]; then
+    echo
+    echo "Installation cancelled."
+    exit 0
+fi
+
+# ============================================================
+# UPDATE SYSTEM
+# ============================================================
+
+echo
+info "Updating Arch Linux..."
+
+sudo pacman -Syu --noconfirm
+
+success "System updated."
+
+# ============================================================
+# PACKAGES
+# ============================================================
+
+echo
+info "Installing required packages..."
+
+PACKAGES=(
+    # Window manager
+    i3-wm
+    i3status
+
+    # Bar / launcher
+    polybar
+    rofi
+
+    # Compositor / wallpaper
+    picom
+    feh
+
+    # Terminal
+    terminator
+
+    # Editor
+    neovim
+
+    # Shell
+    zsh
+    fzf
+    zsh-autosuggestions
+    zsh-syntax-highlighting
+
+    # History
+    atuin
+
+    # File manager
+    ranger
+
+    # Browser
+    firefox
+
+    # X11
+    xorg-server
+    xorg-xinit
+    xorg-xrandr
+    xorg-xset
+    xorg-xprop
+    xclip
+
+    # Startup / desktop
+    dex
+    xsettingsd
+
+    # Lock
+    i3lock
+
+    # Utilities
+    git
+    curl
+    wget
+    unzip
+    scrot
+    file
+    imagemagick
+    jq
+    ripgrep
+    fd
+    bat
+    tree
+
+    # Fonts used by the repository
+    ttf-roboto
+    ttf-martian-mono-nerd
+    ttf-noto-nerd
+)
+
+sudo pacman -S --needed --noconfirm "${PACKAGES[@]}"
+
+success "Packages installed."
+
+# ============================================================
+# FONT CACHE
+# ============================================================
+
+info "Refreshing font cache..."
+
+fc-cache -f >/dev/null 2>&1 || true
+
+success "Font cache refreshed."
+
+# ============================================================
+# BACKUP
+# ============================================================
+
+echo
+info "Backing up existing configuration..."
+
+mkdir -p "$BACKUP_DIR"
+
+if [[ -d "$CONFIG_DIR" ]]; then
+    cp -a "$CONFIG_DIR" "$BACKUP_DIR/config"
+fi
+
+for FILE in \
+    "$HOME/.zshrc" \
+    "$HOME/.p10k.zsh" \
+    "$HOME/.xinitrc"
+do
+    if [[ -e "$FILE" ]]; then
+        cp -a "$FILE" "$BACKUP_DIR/"
+    fi
+done
+
+success "Backup created:"
+echo
+echo "  $BACKUP_DIR"
+
+# ============================================================
+# DOWNLOAD DOTFILES
+# ============================================================
+
+echo
+info "Downloading HackTheClown repository..."
+
+if [[ -d "$REPO_DIR/.git" ]]; then
+
+    info "Repository already exists."
+
+    git -C "$REPO_DIR" fetch origin
+
+    git -C "$REPO_DIR" reset --hard origin/main
+
+else
+
+    if [[ -d "$REPO_DIR" ]]; then
+
+        OLD_REPO="${REPO_DIR}.backup-${TIMESTAMP}"
+
+        warning "Existing repository directory found."
+
+        mv "$REPO_DIR" "$OLD_REPO"
+
+        echo
+        echo "Moved old repository to:"
+        echo
+        echo "  $OLD_REPO"
+
+    fi
+
+    git clone --depth=1 "$REPO" "$REPO_DIR"
+
+fi
+
+success "Repository downloaded."
+
+# ============================================================
+# VERIFY REPOSITORY
+# ============================================================
+
+if [[ ! -d "$REPO_DIR/.config" ]]; then
+    error "Repository .config directory not found."
+    exit 1
+fi
+
+if [[ ! -f "$REPO_DIR/.zshrc" ]]; then
+    error "Repository .zshrc not found."
+    exit 1
+fi
+
+if [[ ! -f "$REPO_DIR/.p10k.zsh" ]]; then
+    error "Repository .p10k.zsh not found."
+    exit 1
+fi
+
+# ============================================================
+# COPY .CONFIG
+# ============================================================
+
+echo
+info "Installing original .config files..."
+
+mkdir -p "$CONFIG_DIR"
+
+cp -a "$REPO_DIR/.config/." "$CONFIG_DIR/"
+
+success "Original configuration installed."
+
+# ============================================================
+# COPY ZSH FILES
+# ============================================================
+
+info "Installing Zsh configuration..."
+
+cp "$REPO_DIR/.zshrc" "$HOME/.zshrc"
+
+cp "$REPO_DIR/.p10k.zsh" "$HOME/.p10k.zsh"
+
+success "Zsh configuration installed."
+
+# ============================================================
+# INSTALL WALLPAPER
+# ============================================================
+
+echo
+info "Installing wallpaper..."
+
+mkdir -p "$HOME/Pictures"
+
+if [[ -f "$REPO_DIR/wallpaper.jpg" ]]; then
+
+    cp "$REPO_DIR/wallpaper.jpg" \
+       "$HOME/Pictures/wallpaper.jpg"
+
+    success "Wallpaper installed."
+
+else
+
+    warning "Repository wallpaper.jpg was not found."
+
+fi
+
+# ============================================================
+# REPLACE /home/changeme
+# ============================================================
+
+echo
+info "Replacing /home/changeme paths..."
+
+while IFS= read -r -d '' FILE; do
+
+    if grep -Iq . "$FILE" 2>/dev/null; then
+
+        sed -i \
+            "s#/home/changeme#$HOME#g" \
+            "$FILE"
+
+    fi
+
+done < <(find "$CONFIG_DIR" -type f -print0)
+
+success "Home paths updated."
+
+# ============================================================
+# FIX ZSH ATUIN
+# ============================================================
+
+echo
+info "Fixing Atuin configuration..."
+
+if [[ -f "$HOME/.zshrc" ]]; then
+
+    # The author's .zshrc expects ~/.atuin/bin/env.
+    #
+    # Arch's package installs atuin system-wide.
+    #
+    # Make the source optional.
+
+    sed -i \
+        's#^[[:space:]]*\. "\$HOME/\.atuin/bin/env"#[[ -f "$HOME/.atuin/bin/env" ]] \&\& . "$HOME/.atuin/bin/env"#' \
+        "$HOME/.zshrc"
+
+fi
+
+success "Atuin configuration checked."
+
+# ============================================================
+# OH MY ZSH
+# ============================================================
+
+echo
+info "Installing Oh My Zsh..."
+
+if [[ -d "$HOME/.oh-my-zsh" ]]; then
+
+    warning "Oh My Zsh already exists."
+
+else
+
+    RUNZSH=no
+    CHSH=no
+
+    export RUNZSH
+    export CHSH
+
+    git clone \
+        --depth=1 \
+        https://github.com/ohmyzsh/ohmyzsh.git \
+        "$HOME/.oh-my-zsh"
+
+    success "Oh My Zsh installed."
+
+fi
+
+# ============================================================
+# POWERLEVEL10K
+# ============================================================
+
+echo
+info "Installing Powerlevel10k..."
+
+ZSH_CUSTOM="$HOME/.oh-my-zsh/custom"
+
+P10K_DIR="$ZSH_CUSTOM/themes/powerlevel10k"
+
+mkdir -p "$ZSH_CUSTOM/themes"
+
+if [[ -d "$P10K_DIR/.git" ]]; then
+
+    git -C "$P10K_DIR" pull --ff-only
+
+else
+
+    rm -rf "$P10K_DIR"
+
+    git clone \
+        --depth=1 \
+        https://github.com/romkatv/powerlevel10k.git \
+        "$P10K_DIR"
+
+fi
+
+success "Powerlevel10k installed."
+
+# ============================================================
+# ZSH AUTOSUGGESTIONS
+# ============================================================
+
+echo
+info "Installing zsh-autosuggestions..."
+
+if [[ -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions/.git" ]]; then
+
+    git -C \
+        "$ZSH_CUSTOM/plugins/zsh-autosuggestions" \
+        pull --ff-only
+
+else
+
+    rm -rf \
+        "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+
+    git clone \
+        --depth=1 \
+        https://github.com/zsh-users/zsh-autosuggestions.git \
+        "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+
+fi
+
+success "zsh-autosuggestions installed."
+
+# ============================================================
+# ZSH SYNTAX HIGHLIGHTING
+# ============================================================
+
+echo
+info "Installing zsh-syntax-highlighting..."
+
+if [[ -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting/.git" ]]; then
+
+    git -C \
+        "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" \
+        pull --ff-only
+
+else
+
+    rm -rf \
+        "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+
+    git clone \
+        --depth=1 \
+        https://github.com/zsh-users/zsh-syntax-highlighting.git \
+        "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+
+fi
+
+success "zsh-syntax-highlighting installed."
+
+# ============================================================
+# FZF ZSH INTEGRATION
+# ============================================================
+
+echo
+info "Configuring FZF..."
+
+if command -v fzf >/dev/null 2>&1; then
+
+    if fzf --zsh > "$HOME/.fzf.zsh" 2>/dev/null; then
+        success "FZF integration configured."
+    else
+        warning "Could not generate .fzf.zsh."
+    fi
+
+fi
+
+# ============================================================
+# DEFAULT SHELL
+# ============================================================
+
+echo
+info "Setting Zsh as default shell..."
+
+ZSH_PATH="$(command -v zsh)"
+
+if [[ -n "$ZSH_PATH" ]]; then
+
+    CURRENT_SHELL="$(
+        getent passwd "$USER" |
+        cut -d: -f7
+    )"
+
+    if [[ "$CURRENT_SHELL" != "$ZSH_PATH" ]]; then
+
+        chsh -s "$ZSH_PATH"
+
+        success "Default shell changed to Zsh."
+
+    else
+
+        success "Zsh is already the default shell."
+
+    fi
+
+fi
+
+# ============================================================
+# I3 CONFIG
+# ============================================================
+
+echo
+info "Updating i3 configuration..."
+
+I3_CONFIG="$CONFIG_DIR/i3/config"
+
+if [[ ! -f "$I3_CONFIG" ]]; then
+
+    error "i3 config not found:"
+    echo
+    echo "$I3_CONFIG"
+    exit 1
+
+fi
+
+# ------------------------------------------------------------
+# Fix home path again specifically in i3
+# ------------------------------------------------------------
+
+sed -i \
+    "s#/home/changeme#$HOME#g" \
+    "$I3_CONFIG"
+
+# ============================================================
+# REMOVE HARD-CODED ROFI 192 DPI
+# ============================================================
+#
+# Original repository:
+#
+# -show run
+# -dpi 192
+#
+# The repository itself notes that 192 DPI may not be suitable
+# for every machine.
+#
+# We remove ONLY the -dpi 192 line and keep the original theme.
+# ============================================================
+
+info "Fixing Rofi DPI..."
+
+sed -i \
+    '/^[[:space:]]*-dpi[[:space:]]\+192[[:space:]]*$/d' \
+    "$I3_CONFIG"
+
+# Also catch inline forms if the repository changes format.
+
+sed -i \
+    's/[[:space:]]*-dpi[[:space:]]*192//g' \
+    "$I3_CONFIG"
+
+success "Rofi 192 DPI override removed."
+
+# ============================================================
+# FIREFOX WORKSPACE 2
+# ============================================================
+
+echo
+info "Configuring Firefox -> Workspace 2..."
+
+# Remove previous Firefox assignment if installer is run again.
+
+sed -i \
+    '/Firefox.*Workspace 2/d' \
+    "$I3_CONFIG"
+
+sed -i \
+    '/for_window \[class="Firefox"\] move to workspace \$ws2/d' \
+    "$I3_CONFIG"
+
+sed -i \
+    '/for_window \[class="(?i)\^firefox\$"\] move to workspace \$ws2/d' \
+    "$I3_CONFIG"
+
+# Remove the original Chrome-only rule.
+
+sed -i \
+    '/for_window \[class="Google-chrome"\] move to workspace \$ws2/d' \
+    "$I3_CONFIG"
+
+# Add Firefox assignment after workspace definitions.
+
+TMP_I3="$(mktemp)"
+
+awk '
+    {
+        print
+    }
+
+    /set \$ws10/ {
+        print ""
+        print "# Firefox -> Workspace 2"
+        print "for_window [class=\"(?i)^firefox$\"] move to workspace $ws2"
+    }
+' "$I3_CONFIG" > "$TMP_I3"
+
+mv "$TMP_I3" "$I3_CONFIG"
+
+success "Firefox will open on Workspace 2."
+
+# ============================================================
+# DISABLE VMWARE-SPECIFIC SETTINGS
+# ============================================================
+
+echo
+info "Checking VMware settings..."
+
+# These are commented in the original repository.
+# Keep them disabled for non-VMware environments.
+
+sed -i \
+    's#^[[:space:]]*exec_always --no-startup-id /usr/bin/vmware-user-suid-wrapper#\# VMware disabled by installer#' \
+    "$I3_CONFIG" 2>/dev/null || true
+
+success "VMware-specific commands left disabled."
+
+# ============================================================
+# WALLPAPER
+# ============================================================
+
+if [[ -f "$HOME/Pictures/wallpaper.jpg" ]]; then
+
+    sed -i \
+        "s#exec_always --no-startup-id feh --bg-fill .*#exec_always --no-startup-id feh --bg-fill $HOME/Pictures/wallpaper.jpg#g" \
+        "$I3_CONFIG"
+
+    success "Wallpaper path configured."
+
+else
+
+    warning "Wallpaper was not installed."
+
+fi
+
+# ============================================================
+# MAKE I3 SCRIPTS EXECUTABLE
+# ============================================================
+
+if [[ -d "$CONFIG_DIR/i3/scripts" ]]; then
+
+    find "$CONFIG_DIR/i3/scripts" \
+        -type f \
+        -exec chmod +x {} \;
+
+    success "i3 scripts made executable."
+
+fi
+
+# ============================================================
+# POLYBAR SCRIPT
+# ============================================================
+
+POLYBAR_SCRIPT="$CONFIG_DIR/polybar/polybar_launch.sh"
+
+if [[ -f "$POLYBAR_SCRIPT" ]]; then
+
+    chmod +x "$POLYBAR_SCRIPT"
+
+    success "Polybar launcher executable."
+
+fi
+
+# ============================================================
+# CHECK ROFI CONFIG
+# ============================================================
+
+ROFI_CONFIG="$CONFIG_DIR/rofi/rofi.rasi"
+
+if [[ -f "$ROFI_CONFIG" ]]; then
+
+    # Fix any remaining changeme path.
+
+    sed -i \
+        "s#/home/changeme#$HOME#g" \
+        "$ROFI_CONFIG"
+
+    success "Rofi configuration path fixed."
+
+fi
+
+# ============================================================
+# CHECK TERMINATOR
+# ============================================================
+
+if [[ -f "$CONFIG_DIR/terminator/config" ]]; then
+
+    success "Original Terminator configuration installed."
+
+else
+
+    warning "Terminator config not found in repository."
+
+fi
+
+# ============================================================
+# CHECK POLYBAR
+# ============================================================
+
+if [[ -f "$CONFIG_DIR/polybar/polybar.ini" ]]; then
+
+    success "Original Polybar configuration installed."
+
+fi
+
+# ============================================================
+# CHECK NEOVIM
+# ============================================================
+
+if [[ -d "$CONFIG_DIR/nvim" ]]; then
+
+    success "Original Neovim configuration installed."
+
+fi
+
+# ============================================================
+# CHECK PICOM
+# ============================================================
+
+if [[ -f "$CONFIG_DIR/picom/picom.conf" ]]; then
+
+    success "Original Picom configuration installed."
+
+fi
+
+# ============================================================
+# XINITRC
+# ============================================================
+
+echo
+info "Checking .xinitrc..."
+
+if [[ ! -f "$HOME/.xinitrc" ]]; then
+
+    cat > "$HOME/.xinitrc" <<'EOF'
+#!/bin/sh
+
+exec i3
+EOF
+
+    chmod +x "$HOME/.xinitrc"
+
+    success ".xinitrc created."
+
+else
+
+    if grep -q "exec i3" "$HOME/.xinitrc"; then
+
+        success ".xinitrc already starts i3."
+
+    else
+
+        warning ".xinitrc exists but does not contain 'exec i3'."
+        warning "It was not modified."
+
+    fi
+
+fi
+
+# ============================================================
+# VALIDATE I3
+# ============================================================
+
+echo
+echo "============================================================"
+echo "                 VALIDATING i3 CONFIG"
+echo "============================================================"
+echo
+
+if i3 -C -c "$I3_CONFIG"; then
+
+    success "i3 configuration is valid."
+
+else
+
+    error "i3 configuration validation FAILED."
+
+    echo
+    echo "Your backup is here:"
+    echo
+    echo "  $BACKUP_DIR"
+    echo
+
+    exit 1
+
+fi
+
+# ============================================================
+# CHECK Rofi
+# ============================================================
+
+echo
+info "Checking Rofi..."
+
+if command -v rofi >/dev/null 2>&1; then
+
+    success "Rofi installed."
+
+else
+
+    warning "Rofi command not found."
+
+fi
+
+# ============================================================
+# CHECK IMPORTANT COMMANDS
+# ============================================================
+
+echo
+echo "============================================================"
+echo "                  INSTALLED COMPONENTS"
+echo "============================================================"
+echo
+
+COMMANDS=(
+    i3
+    terminator
+    polybar
+    rofi
+    nvim
+    atuin
+    ranger
+    zsh
+    picom
+    feh
+    firefox
+)
+
+for CMD in "${COMMANDS[@]}"; do
+
+    if command -v "$CMD" >/dev/null 2>&1; then
+
+        echo -e "${GREEN}[OK]${RESET} $CMD"
+
+    else
+
+        echo -e "${RED}[MISSING]${RESET} $CMD"
+
+    fi
+
+done
+
+# ============================================================
+# FONT CHECK
+# ============================================================
+
+echo
+echo "============================================================"
+echo "                     FONT CHECK"
+echo "============================================================"
+echo
+
+fc-match "MartianMono Nerd Font Propo Condensed Medium" \
+    | head -1
+
+fc-match "NotoSansM Nerd Font Mono Condensed Bold" \
+    | head -1
+
+fc-match "Roboto Condensed" \
+    | head -1
+
+# ============================================================
+# FINAL
+# ============================================================
+
+echo
+echo
+echo "============================================================"
+echo "             INSTALLATION COMPLETE"
+echo "============================================================"
+echo
+
+echo "Original HackTheClown dotfiles:"
+echo
+echo "  $REPO"
+echo
+
+echo "Local repository:"
+echo
+echo "  $REPO_DIR"
+echo
+
+echo "Backup:"
+echo
+echo "  $BACKUP_DIR"
+echo
+
+echo "============================================================"
+echo "IMPORTANT CHANGES"
+echo "============================================================"
+echo
+
+echo "Rofi:"
+echo
+echo "  Original HackTheClown theme retained."
+echo "  Forced -dpi 192 removed."
+echo "  Rofi will now use your display's normal DPI."
+echo
+
+echo "Firefox:"
+echo
+echo "  Firefox -> Workspace 2"
+echo
+
+echo "Terminal:"
+echo
+echo "  Terminator"
+echo
+
+echo "Window Manager:"
+echo
+echo "  i3"
+echo
+
+echo "Status bar:"
+echo
+echo "  Polybar"
+echo
+
+echo "Shell:"
+echo
+echo "  Zsh + Oh My Zsh + Powerlevel10k"
+echo
+
+echo "History:"
+echo
+echo "  Atuin"
+echo
+
+echo "Editor:"
+echo
+echo "  Neovim"
+echo
+
+echo "============================================================"
+echo "USEFUL SHORTCUTS"
+echo "============================================================"
+echo
+
+echo "  Super + Enter"
+echo "      Terminator"
+echo
+
+echo "  Super + Shift + D"
+echo "      Rofi"
+echo
+
+echo "  Super + 1"
+echo "      Terminal workspace"
+echo
+
+echo "  Super + 2"
+echo "      Internet / Firefox"
+echo
+
+echo "  Super + 3..0"
+echo "      Other workspaces"
+echo
+
+echo "  Super + Shift + 1..0"
+echo "      Move window to workspace"
+echo
+
+echo "  Super + Shift + C"
+echo "      Reload i3"
+echo
+
+echo "  Super + Shift + R"
+echo "      Restart i3"
+echo
+
+echo "  Super + Shift + E"
+echo "      Exit i3"
+echo
+
+echo "  Super + R"
+echo "      Resize mode"
+echo
+
+echo "============================================================"
+echo "NEXT STEP"
+echo "============================================================"
+echo
+
+echo "Log out and select i3 from your display manager."
+echo
+echo "Or, if using startx:"
+echo
+echo "  startx"
+echo
+
+echo "After entering i3, reload with:"
+echo
+echo "  i3-msg reload"
+echo
+
+echo "============================================================"
+echo
+```
