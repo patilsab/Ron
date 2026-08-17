@@ -16,16 +16,15 @@
   [[default]]
     background_type = solid
     background_color = "#000000"
-    background_darkness = 1.0
+    foreground_color = "#f6f5f4"
+
+    use_theme_colors = False
+    use_system_font = False
+    font = MartianMono Nerd Font Propo Condensed Bold 9
 
     cursor_fg_color = "#eef9f9"
     cursor_bg_color = "#eef9f9"
     cursor_color_default = False
-
-    font = JetBrainsMono Nerd Font 10
-    use_system_font = False
-
-    foreground_color = "#f6f5f4"
 
     scrollback_infinite = True
     disable_mousewheel_zoom = True
