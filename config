@@ -29,14 +29,6 @@ client.urgent           #ff0000         #ff0000         #ffffff         #ff0000
 # HTC_NOTE: modify the font size depending on your setup
 font pango:MartianMono Nerd Font Propo Condensed Medium 8
 
-######################
-# Titlebar Buttons   #
-######################
-
-titlebar_button close
-titlebar_button maximize
-titlebar_button minimize
-
 #######################
 # Common Key Bindings #
 #######################
