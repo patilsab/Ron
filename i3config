@@ -1,0 +1,172 @@
+# i3 config - cleaned for VMware
+
+#################
+# Modifier Keys #
+#################
+
+set $mod Mod4
+
+floating_modifier $mod
+tiling_drag modifier titlebar
+
+
+#################
+# Window Colors #
+#################
+
+client.focused          #000000 #000000 #bcbbbc #000000
+client.unfocused        #363636 #363636 #969696 #363636
+client.focused_inactive #363636 #363636 #969696 #363636
+client.urgent            #ff0000 #ff0000 #ffffff #ff0000
+
+
+#########
+# Fonts #
+#########
+
+font pango:MartianMono Nerd Font Propo Condensed Medium 8
+
+
+#######################
+# Common Key Bindings #
+#######################
+
+# Reload i3
+bindsym $mod+Shift+c reload
+
+# Restart i3
+bindsym $mod+Shift+r restart
+
+# Exit i3
+bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'You pressed the exit shortcut. Do you really want to exit i3? This will end your X session.' -B 'Yes, exit i3' 'i3-msg exit'"
+
+# Resize mode
+bindsym $mod+r mode "resize"
+
+# Lock screen
+bindsym $mod+shift+l exec /home/kali/.config/i3/scripts/lock
+
+# Floating window toggle
+bindsym $mod+Shift+space floating toggle
+
+# Move windows
+bindsym $mod+Shift+Left  move left
+bindsym $mod+Shift+Down  move down
+bindsym $mod+Shift+Up    move up
+bindsym $mod+Shift+Right move right
+
+# Focus windows
+bindsym $mod+Left  focus left
+bindsym $mod+Down  focus down
+bindsym $mod+Up    focus up
+bindsym $mod+Right focus right
+
+# Close window
+bindsym $mod+k kill
+
+# Open Terminator
+bindsym $mod+Return exec terminator
+
+# Rofi application launcher
+bindsym $mod+d exec --no-startup-id rofi -show drun \
+    -config /home/kali/.config/rofi/rofi.rasi
+
+
+#####################
+# Startup Programs #
+#####################
+
+# Desktop autostart
+exec --no-startup-id dex --autostart --environment i3
+
+# GTK/application settings
+exec --no-startup-id xsettingsd
+
+# VMware integration
+exec --no-startup-id /usr/bin/vmware-user-suid-wrapper
+
+# VMware display resize
+exec_always --no-startup-id /usr/bin/xrandr --output Virtual-1 --mode 1792x994
+
+# Wallpaper
+exec_always --no-startup-id feh --bg-fill /home/kali/Pictures/wallpaper.jpg
+
+# Polybar
+exec_always --no-startup-id /home/kali/.config/polybar/polybar_launch.sh
+
+
+##############
+# Workspaces #
+##############
+
+set $ws1 "1:  Terminal"
+set $ws2 "2:  Internet"
+set $ws3 "3"
+set $ws4 "4"
+set $ws5 "5"
+set $ws6 "6"
+set $ws7 "7"
+set $ws8 "8"
+set $ws9 "9"
+set $ws10 "10"
+
+# Switch workspace
+bindsym $mod+1 workspace number $ws1
+bindsym $mod+2 workspace number $ws2
+bindsym $mod+3 workspace number $ws3
+bindsym $mod+4 workspace number $ws4
+bindsym $mod+5 workspace number $ws5
+bindsym $mod+6 workspace number $ws6
+bindsym $mod+7 workspace number $ws7
+bindsym $mod+8 workspace number $ws8
+bindsym $mod+9 workspace number $ws9
+bindsym $mod+0 workspace number $ws10
+
+# Move window to workspace
+bindsym $mod+Shift+1 move container to workspace number $ws1
+bindsym $mod+Shift+2 move container to workspace number $ws2
+bindsym $mod+Shift+3 move container to workspace number $ws3
+bindsym $mod+Shift+4 move container to workspace number $ws4
+bindsym $mod+Shift+5 move container to workspace number $ws5
+bindsym $mod+Shift+6 move container to workspace number $ws6
+bindsym $mod+Shift+7 move container to workspace number $ws7
+bindsym $mod+Shift+8 move container to workspace number $ws8
+bindsym $mod+Shift+9 move container to workspace number $ws9
+bindsym $mod+Shift+0 move container to workspace number $ws10
+
+
+########################
+# Application Placement
+########################
+
+# Firefox always opens on Workspace 2
+for_window [class="(?i)^firefox$"] move to workspace $ws2
+
+
+################
+# Resize Mode  #
+################
+
+mode "resize" {
+    bindsym j resize shrink width 10 px or 10 ppt
+    bindsym k resize grow height 10 px or 10 ppt
+    bindsym l resize shrink height 10 px or 10 ppt
+    bindsym semicolon resize grow width 10 px or 10 ppt
+
+    bindsym Left  resize shrink width 10 px or 10 ppt
+    bindsym Down  resize grow height 10 px or 10 ppt
+    bindsym Up    resize shrink height 10 px or 10 ppt
+    bindsym Right resize grow width 10 px or 10 ppt
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+    bindsym $mod+r mode "default"
+}
+
+
+########
+# Gaps #
+########
+
+gaps inner 15
+gaps outer 5
